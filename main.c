@@ -225,19 +225,66 @@ void cacheMem_initialize()
 //format proc_ID address r/wbar data
 //example: 1      0xaf5    1     0xaf00
 //for read, data is internally assigned to 0
+void update_snooper_response(CacheCtrl_t *cc,int snoop_id)
+{
+        int RW;
+        //For snooping processors
+        cacheMemAddrCheck(cc,&readfrom_main_mem,&writeback_main_mem,snoop_id);
+        printf("readfrom_main_mem=%d    writeback_main_mem=%d\n",readfrom_main_mem,writeback_main_mem);
+
+    //if after snooper's response if tags matched, writeback and read from main memory
+        if(writeback_main_mem==1)
+        {
+            RW=0;
+            SharedMem(RW,cc,snoop_id);
+        }
+
+        //Update the snooper's MI state
+        MICtrllr(cc,&writeback_main_mem,snoop_id);
+        //printf("Cache snoop=%x  mi=%d   tag=%x\n",cacheMem[snoop_id][cc.index].data,cacheMem[snoop_id][cc.index].mi,cacheMem[snoop_id][cc.index].tag);
+        writeback_main_mem=0;
+
+        //For processor which has the bus
+        cacheMemAddrCheck(cc,&readfrom_main_mem,&writeback_main_mem,cc->proc_id);
+        printf("readfrom_main_mem=%d    writeback_main_mem=%d\n",readfrom_main_mem,writeback_main_mem);
+}
+
+
+        // printf("Cache snoop=%x  mi=%d   tag=%x\n",cacheMem[snoop_id][cc.index].data,cacheMem[snoop_id][cc.index].mi,cacheMem[snoop_id][cc.index].tag);
+void update_master_response(CacheCtrl_t *cc)
+{
+
+        int RW=0;
+        if(writeback_main_mem==1 || readfrom_main_mem==1)
+        {
+        //write followed by read
+        //When tags don't match
+            if(writeback_main_mem==1)
+            {
+                RW=0;
+                SharedMem(RW,cc,cc->proc_id);
+            }
+            RW=1;
+            SharedMem(RW,cc,cc->proc_id);
+        }
+        CacheReadWrite(cc,cc->proc_id);
+        // printf("Cache snoop=%x  mi=%d   tag=%x\n",cacheMem[snoop_id][cc.index].data,cacheMem[snoop_id][cc.index].mi,cacheMem[snoop_id][cc.index].tag);
+        MICtrllr(cc,&writeback_main_mem,cc->proc_id);
+}
 int main()
 {
     CacheCtrl_t cc;
     int snoop_id;
     int ADDR,READWRITE,PR_ID;
     unsigned int DATA;
-    unsigned char RW;
     index_bits=LOG2(CACHELINESIZE);
     FILE *fin;
-    fin=fopen("in.txt","r");
+    fin=fopen("procID_address_rw_data.txt","r");
+    printf("proc_ID address r/wbar data\n");
 
-    //cacheMem_initialize();
+    cacheMem_initialize();
     //printf("index mask=%x    index_bits=%d\n",index_mask,index_bits);
+
     while(fscanf(fin,"%d 0x%x %d 0x%x\n",&PR_ID,&ADDR,&READWRITE,&DATA)!=EOF)
     {
 
@@ -249,7 +296,7 @@ int main()
         cc.proc_id=PR_ID;
         cc.rw=READWRITE;
 
-        if(RW==0)
+        if(cc.rw==0)
         {
             cc.data=DATA;
         }
@@ -264,55 +311,36 @@ int main()
         printf("%d 0x%x %d 0x%x\n",cc.proc_id,cc.addr,cc.rw,cc.data);
 
         // CacheMem_t CacheMem;
-        snoop_id=(cc.proc_id==1)?2:1;
-        cacheMem[cc.proc_id-1][cc.index].data=0x23;
-        cacheMem[cc.proc_id-1][cc.index].mi=I;
-        cacheMem[cc.proc_id-1][cc.index].tag=0x02;
+        //snoop_id=(cc.proc_id==1)?2:1;
+        printf("snoop_id: %d\n",snoop_id);
+//        cacheMem[cc.proc_id-1][cc.index].data=0x23;
+//        cacheMem[cc.proc_id-1][cc.index].mi=M;
+//        cacheMem[cc.proc_id-1][cc.index].tag=0x00;
+//
+//        cacheMem[snoop_id-1][cc.index].data=0x34;
+//        cacheMem[snoop_id-1][cc.index].mi=M;
+//        cacheMem[snoop_id-1][cc.index].tag=0x01;
+        //printf("data=%d  mi=%d   tag=%d\n",cacheMem[cc.proc_id-1][cc.index].data,cacheMem[cc.proc_id-1][cc.index].mi,cacheMem[cc.proc_id-1][cc.index].tag);
 
-        cacheMem[snoop_id-1][cc.index].data=0x34;
-        cacheMem[snoop_id-1][cc.index].mi=M;
-        cacheMem[snoop_id-1][cc.index].tag=0x00;
-   //printf("data=%d  mi=%d   tag=%d\n",cacheMem[cc.proc_id-1][cc.index].data,cacheMem[cc.proc_id-1][cc.index].mi,cacheMem[cc.proc_id-1][cc.index].tag);
-
-
-        cacheMemAddrCheck(&cc,&readfrom_main_mem,&writeback_main_mem,snoop_id);
-        printf("readfrom_main_mem=%d    writeback_main_mem=%d\n",readfrom_main_mem,writeback_main_mem);
-
-    //if after snooper's response if tags matched, writeback and read from main memory
-        if(writeback_main_mem==1)
+        for(snoop_id=1;snoop_id<MAXPROCS;snoop_id++)
         {
-            RW=0;
-            SharedMem(RW,&cc,snoop_id);
-        }
-
-        //Update the snooper's MI state
-        MICtrllr(&cc,&writeback_main_mem,snoop_id);
-        //printf("Cache snoop=%x  mi=%d   tag=%x\n",cacheMem[snoop_id][cc.index].data,cacheMem[snoop_id][cc.index].mi,cacheMem[snoop_id][cc.index].tag);
-        writeback_main_mem=0;
-        cacheMemAddrCheck(&cc,&readfrom_main_mem,&writeback_main_mem,cc.proc_id);
-        printf("readfrom_main_mem=%d    writeback_main_mem=%d\n",readfrom_main_mem,writeback_main_mem);
-
-
-        // printf("Cache snoop=%x  mi=%d   tag=%x\n",cacheMem[snoop_id][cc.index].data,cacheMem[snoop_id][cc.index].mi,cacheMem[snoop_id][cc.index].tag);
-
-        if(writeback_main_mem==1 || readfrom_main_mem==1)
-        {
-        //write followed by read
-        //When tags don't match
-            if(writeback_main_mem==1)
+            if(snoop_id==cc.proc_id)
             {
-                RW=0;
-                SharedMem(RW,&cc,cc.proc_id);
+                continue;
             }
-            RW=1;
-            SharedMem(RW,&cc,cc.proc_id);
+            else
+            {
+                update_snooper_response(&cc,snoop_id);
+
+            }
+
         }
-        CacheReadWrite(&cc,cc.proc_id);
-        // printf("Cache snoop=%x  mi=%d   tag=%x\n",cacheMem[snoop_id][cc.index].data,cacheMem[snoop_id][cc.index].mi,cacheMem[snoop_id][cc.index].tag);
-        MICtrllr(&cc,&writeback_main_mem,cc.proc_id);
+        update_master_response(&cc);
         printf("Cache req has data=%x  mi=%d   at tag=%x index=%x\n",cacheMem[cc.proc_id-1][cc.index].data,cacheMem[cc.proc_id-1][cc.index].mi,cacheMem[cc.proc_id-1][cc.index].tag,cc.index);
         printf("Cache snoop has data=%x  mi=%d  at tag=%x index=%x\n",cacheMem[snoop_id-1][cc.index].data,cacheMem[snoop_id-1][cc.index].mi,cacheMem[snoop_id-1][cc.index].tag,cc.index);
-        }
+
+        //controller(&cc,snoop_id);
+       }
     //Check the tag o
     //if()
     return 0;
