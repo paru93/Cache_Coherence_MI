@@ -56,7 +56,9 @@ typedef struct
 }CacheMem_t;
 static CacheMem_t  cacheMem[MAXPROCS][CACHELINESIZE];	// initialize the cache memory
 int total_memory_latency=0;
-
+CacheCtrl_t cc;
+int ADDR,READWRITE,PR_ID;
+unsigned int DATA;
 unsigned int LOG2( unsigned int x )
 {
   unsigned int ans = 0 ;
@@ -143,7 +145,7 @@ void cacheMemAddrCheck(CacheCtrl_t *cc,unsigned char *readfrom_main_mem, unsigne
     {
         //*memRd = 0;     // no need to go to memory for reading the data
         //*Hit = 1;       // found in the cache location
-		if(cc->tag == cacheMem[Proc_ID-1][cc->index].tag)
+		if(cc->tag == cacheMem[Proc_ID-1][cc->index].tag && cacheMem[Proc_ID-1][cc->index].mi==M)
 		{
 			//respond to invalidate by writing the data back to main memory
 			*writeback_main_mem = 1;
@@ -183,14 +185,14 @@ void SharedMem(unsigned char RW,CacheCtrl_t *cc,char Proc_ID)
 
 			memory_address=(cc->tag)<<index_bits | (cc->index);
 			cacheMem[Proc_ID-1][cc->index].data=mem[memory_address];		// return the data requested from teh mem
-            printf("Memory address =%x\n",memory_address);
+            //printf("Memory address =%x\n",memory_address);
             // Update tag after eviction if the requester evicted the block
             if(Proc_ID==cc->proc_id)
             {
                 cacheMem[Proc_ID-1][cc->index].tag=cc->tag;
 
             }
-            printf("cacheMem_containts=%d    data mem=%d\n",cacheMem[Proc_ID-1][cc->index].data,mem[memory_address]);
+            //printf("cacheMem_containts=%d    data mem=%d\n",cacheMem[Proc_ID-1][cc->index].data,mem[memory_address]);
 		}
 		else		// for write operation
 		{
@@ -199,9 +201,9 @@ void SharedMem(unsigned char RW,CacheCtrl_t *cc,char Proc_ID)
 			//eviction_address=((cacheMem[Proc_ID-1][cc->index].tag)) | (cc->index);
 			//eviction_address=((cacheMem[Proc_ID-1][cc->index].tag));
 
-			printf("eviction_address=%d\n",eviction_address);
+			//printf("eviction_address=%d\n",eviction_address);
 			mem[eviction_address]=cacheMem[Proc_ID-1][cc->index].data;// write the data in the memory
-			printf("cacheMem_containts=%d    data mem=%d\n",cacheMem[Proc_ID-1][cc->index].data,mem[eviction_address]);
+			//printf("cacheMem_containts=%d    data mem=%d\n",cacheMem[Proc_ID-1][cc->index].data,mem[eviction_address]);
 		}
 	//}
 
@@ -230,7 +232,7 @@ void update_snooper_response(CacheCtrl_t *cc,int snoop_id)
         int RW;
         //For snooping processors
         cacheMemAddrCheck(cc,&readfrom_main_mem,&writeback_main_mem,snoop_id);
-        printf("readfrom_main_mem=%d    writeback_main_mem=%d\n",readfrom_main_mem,writeback_main_mem);
+        //printf("readfrom_main_mem=%d    writeback_main_mem=%d\n",readfrom_main_mem,writeback_main_mem);
 
     //if after snooper's response if tags matched, writeback and read from main memory
         if(writeback_main_mem==1)
@@ -246,7 +248,7 @@ void update_snooper_response(CacheCtrl_t *cc,int snoop_id)
 
         //For processor which has the bus
         cacheMemAddrCheck(cc,&readfrom_main_mem,&writeback_main_mem,cc->proc_id);
-        printf("readfrom_main_mem=%d    writeback_main_mem=%d\n",readfrom_main_mem,writeback_main_mem);
+        //printf("readfrom_main_mem=%d    writeback_main_mem=%d\n",readfrom_main_mem,writeback_main_mem);
 }
 
 
@@ -273,15 +275,11 @@ void update_master_response(CacheCtrl_t *cc)
 }
 int main()
 {
-    CacheCtrl_t cc;
-    int snoop_id;
-    int ADDR,READWRITE,PR_ID;
-    unsigned int DATA;
     index_bits=LOG2(CACHELINESIZE);
     FILE *fin;
     fin=fopen("procID_address_rw_data.txt","r");
-    printf("proc_ID address r/wbar data\n");
-
+    //printf("proc_ID address r/wbar data\n");
+    int snoop_id;
     cacheMem_initialize();
     //printf("index mask=%x    index_bits=%d\n",index_mask,index_bits);
 
@@ -307,12 +305,12 @@ int main()
 
         cc.index=cc.addr&index_mask;
         cc.tag=cc.addr>>index_bits;
-        printf("index =%x   tag=%x\n",cc.index,cc.tag);
-        printf("%d 0x%x %d 0x%x\n",cc.proc_id,cc.addr,cc.rw,cc.data);
+        //printf("index =%x   tag=%x\n",cc.index,cc.tag);
+        //printf("%d 0x%x %d 0x%x\n",cc.proc_id,cc.addr,cc.rw,cc.data);
 
         // CacheMem_t CacheMem;
         //snoop_id=(cc.proc_id==1)?2:1;
-        printf("snoop_id: %d\n",snoop_id);
+        //printf("snoop_id: %d\n",snoop_id);
 //        cacheMem[cc.proc_id-1][cc.index].data=0x23;
 //        cacheMem[cc.proc_id-1][cc.index].mi=M;
 //        cacheMem[cc.proc_id-1][cc.index].tag=0x00;
@@ -322,7 +320,7 @@ int main()
 //        cacheMem[snoop_id-1][cc.index].tag=0x01;
         //printf("data=%d  mi=%d   tag=%d\n",cacheMem[cc.proc_id-1][cc.index].data,cacheMem[cc.proc_id-1][cc.index].mi,cacheMem[cc.proc_id-1][cc.index].tag);
 
-        for(snoop_id=1;snoop_id<MAXPROCS;snoop_id++)
+        for(snoop_id=1;snoop_id<=MAXPROCS;snoop_id++)
         {
             if(snoop_id==cc.proc_id)
             {
@@ -330,14 +328,18 @@ int main()
             }
             else
             {
-                update_snooper_response(&cc,snoop_id);
+             //update_snooper_response(&cc,snoop_id);
+             update_snooper_response(&cc,snoop_id);
 
             }
 
         }
+        //snoop_id=(cc.proc_id==1)?2:1;
+        //update_snooper_response(&cc,snoop_id);
+
         update_master_response(&cc);
-        printf("Cache req has data=%x  mi=%d   at tag=%x index=%x\n",cacheMem[cc.proc_id-1][cc.index].data,cacheMem[cc.proc_id-1][cc.index].mi,cacheMem[cc.proc_id-1][cc.index].tag,cc.index);
-        printf("Cache snoop has data=%x  mi=%d  at tag=%x index=%x\n",cacheMem[snoop_id-1][cc.index].data,cacheMem[snoop_id-1][cc.index].mi,cacheMem[snoop_id-1][cc.index].tag,cc.index);
+        printf("Proc1 Cache data=%x  MI=%d   at tag=%x index=%x\t",cacheMem[0][cc.index].data,cacheMem[0][cc.index].mi,cacheMem[0][cc.index].tag,cc.index);
+        printf("Proc2 Cache data=%x  MI=%d   at tag=%x index=%x\n",cacheMem[1][cc.index].data,cacheMem[1][cc.index].mi,cacheMem[1][cc.index].tag,cc.index);
 
         //controller(&cc,snoop_id);
        }
