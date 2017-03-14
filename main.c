@@ -3,7 +3,7 @@
 //#include "includes.h"
 #define CACHELATENCY 1
 #define MAINMEMLATENCY 20
-#define MAXPROCS 2
+#define MAXPROCS 4
 #define CACHELINESIZE 256//For testing
 #define MAINLINESIZE 1024
 
@@ -20,7 +20,7 @@ typedef struct
 	int tag;
 }CacheCtrl_t;
 unsigned char  read,write,readfrom_cache,readfrom_main_mem,writeback_main_mem;
-int miscount=0,hitcount=0,memcycles=0;
+int miscount=0,hitcount=0,memcycles=0,mainmemory_accesses=0;
 typedef enum
 {
 	I = 0,
@@ -59,12 +59,22 @@ int total_memory_latency=0;
 CacheCtrl_t cc;
 int ADDR,READWRITE,PR_ID;
 unsigned int DATA;
+
 unsigned int LOG2( unsigned int x )
 {
   unsigned int ans = 0 ;
   while( x>>=1 ) ans++;
   return ans ;
 }
+const char* state_string(MI_t x)
+{
+   switch (x)
+   {
+      case M: return "M";
+      case I: return "I";
+   }
+}
+
 void MICtrllr(CacheCtrl_t *cc,unsigned char *writeback_main_mem,char Proc_ID)
 {
     MI_t nextState;
@@ -239,6 +249,7 @@ void update_snooper_response(CacheCtrl_t *cc,int snoop_id)
         {
             RW=0;
             SharedMem(RW,cc,snoop_id);
+            mainmemory_accesses++;
         }
 
         //Update the snooper's MI state
@@ -247,7 +258,6 @@ void update_snooper_response(CacheCtrl_t *cc,int snoop_id)
         writeback_main_mem=0;
 
         //For processor which has the bus
-        cacheMemAddrCheck(cc,&readfrom_main_mem,&writeback_main_mem,cc->proc_id);
         //printf("readfrom_main_mem=%d    writeback_main_mem=%d\n",readfrom_main_mem,writeback_main_mem);
 }
 
@@ -257,6 +267,7 @@ void update_master_response(CacheCtrl_t *cc)
 {
 
         int RW=0;
+        cacheMemAddrCheck(cc,&readfrom_main_mem,&writeback_main_mem,cc->proc_id);
         if(writeback_main_mem==1 || readfrom_main_mem==1)
         {
         //write followed by read
@@ -265,9 +276,11 @@ void update_master_response(CacheCtrl_t *cc)
             {
                 RW=0;
                 SharedMem(RW,cc,cc->proc_id);
+                mainmemory_accesses++;
             }
             RW=1;
             SharedMem(RW,cc,cc->proc_id);
+            mainmemory_accesses++;
         }
         CacheReadWrite(cc,cc->proc_id);
         // printf("Cache snoop=%x  mi=%d   tag=%x\n",cacheMem[snoop_id][cc.index].data,cacheMem[snoop_id][cc.index].mi,cacheMem[snoop_id][cc.index].tag);
@@ -293,7 +306,7 @@ int main()
         cc.addr=ADDR;
         cc.proc_id=PR_ID;
         cc.rw=READWRITE;
-
+        printf("%d 0x%x %d 0x%x\n",PR_ID,ADDR,READWRITE,DATA);
         if(cc.rw==0)
         {
             cc.data=DATA;
@@ -338,13 +351,16 @@ int main()
         //update_snooper_response(&cc,snoop_id);
 
         update_master_response(&cc);
-        printf("Proc1 Cache data=%x  MI=%d   at tag=%x index=%x\t",cacheMem[0][cc.index].data,cacheMem[0][cc.index].mi,cacheMem[0][cc.index].tag,cc.index);
-        printf("Proc2 Cache data=%x  MI=%d   at tag=%x index=%x\n",cacheMem[1][cc.index].data,cacheMem[1][cc.index].mi,cacheMem[1][cc.index].tag,cc.index);
-
+        printf("Proc1 Cache data=%x  MI=%s  at tag=%x index=%x\t",cacheMem[0][cc.index].data,state_string(cacheMem[0][cc.index].mi),cacheMem[0][cc.index].tag,cc.index);
+        printf("Proc2 Cache data=%x  MI=%s   at tag=%x index=%x\n",cacheMem[1][cc.index].data,state_string(cacheMem[1][cc.index].mi),cacheMem[1][cc.index].tag,cc.index);
+        printf("Proc3 Cache data=%x  MI=%s   at tag=%x index=%x\t",cacheMem[2][cc.index].data,state_string(cacheMem[2][cc.index].mi),cacheMem[2][cc.index].tag,cc.index);
+        printf("Proc4 Cache data=%x  MI=%s   at tag=%x index=%x\n",cacheMem[3][cc.index].data,state_string(cacheMem[3][cc.index].mi),cacheMem[3][cc.index].tag,cc.index);
         //controller(&cc,snoop_id);
        }
     //Check the tag o
     //if()
+    printf("Hits:%d   Misses:%d    Main memory accesses:%d\n",hitcount,miscount,mainmemory_accesses);
+
     return 0;
 }
 
